@@ -12,32 +12,6 @@ const PORT = process.env.PORT || 3000;
 const sessions = new Map();
 let wss;
 
-// Convert plain text cookies to appState format
-function convertCookiesToAppState(cookieString) {
-  const cookies = [];
-  const parts = cookieString.split(';');
-  
-  for (let part of parts) {
-    part = part.trim();
-    if (!part) continue;
-    
-    const [key, value] = part.split('=');
-    if (key && value) {
-      cookies.push({
-        key: key.trim(),
-        value: decodeURIComponent(value.trim()),
-        domain: ".facebook.com",
-        path: "/",
-        hostOnly: false,
-        creation: new Date().toISOString(),
-        lastAccessed: new Date().toISOString()
-      });
-    }
-  }
-  
-  return cookies;
-}
-
 // HTML Control Panel
 const htmlControlPanel = `
 <!DOCTYPE html>
@@ -202,7 +176,7 @@ const htmlControlPanel = `
         }
         .info-box {
             background: #2c3e50;
-            border-left: 4px solid #9C27B0;
+            border-left: 4px solid #2196F3;
             padding: 10px;
             margin: 10px 0;
             border-radius: 4px;
@@ -214,15 +188,6 @@ const htmlControlPanel = `
             margin: 10px 0;
             border-radius: 4px;
             font-weight: bold;
-        }
-        .example-box {
-            background: #1e3a5f;
-            border-left: 4px solid #2196F3;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 11px;
         }
     </style>
 </head>
@@ -241,21 +206,20 @@ const htmlControlPanel = `
         
         <div id="cookie-file-tab" class="tabcontent active-tab">
             <input type="file" id="cookie-file" accept=".txt">
-            <small>Upload your cookie file (supports both formats)</small>
+            <small>Upload cookie file (one cookie per line)</small>
         </div>
         
         <div id="cookie-text-tab" class="tabcontent">
-            <textarea id="cookie-text" placeholder="Paste your cookies here (one per line)" rows="8"></textarea>
-            <small>Paste cookies directly - Plain text or JSON appState format</small>
+            <textarea id="cookie-text" placeholder="Paste cookies here (one per line)&#10;&#10;Example:&#10;sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb" rows="8"></textarea>
+            <small>Paste full cookie string (sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb)</small>
         </div>
         
         <div class="info-box">
-            <strong>🍪 Cookie Format Examples</strong>
+            <strong>🍪 Cookie Format</strong>
             <div style="margin-top: 5px; font-size: 12px;">
-                <strong>Plain Text (Auto-converts):</strong><br>
-                sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb<br><br>
-                <strong>JSON appState:</strong><br>
-                [{"key":"datr","value":"xxx"},{"key":"sb","value":"yyy"}]
+                Simply paste your full cookie string:<br>
+                <code>sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb;presence=xxx</code><br><br>
+                Multiple cookies? One per line!
             </div>
         </div>
         
@@ -270,7 +234,7 @@ const htmlControlPanel = `
         </div>
         
         <div class="warning-box" id="e2ee-warning" style="display: none;">
-            ⚠️ E2EE Mode Active! Messages jayenge encrypted inbox me
+            ⚠️ E2EE Active! Messages will go to encrypted inbox
         </div>
         
         <div>
@@ -294,7 +258,7 @@ const htmlControlPanel = `
         
         <div id="session-info" style="display: none;" class="session-info">
             <h3>Session ID: <span id="session-id-display"></span></h3>
-            <input type="text" id="stop-session-id" placeholder="Enter Session ID to stop">
+            <input type="text" id="stop-session-id" placeholder="Session ID to stop">
             <button id="stop-specific-btn">Stop Session</button>
         </div>
     </div>
@@ -456,8 +420,6 @@ const htmlControlPanel = `
         };
 
         startBtn.addEventListener('click', () => {
-            let cookiesContent = '';
-            
             const cookieFile = document.getElementById('cookie-file').files[0];
             const cookieText = document.getElementById('cookie-text').value.trim();
             
@@ -516,56 +478,26 @@ const htmlControlPanel = `
             }
         });
         
-        addLog('✅ Ready - Supports plain text & JSON cookies + E2EE');
+        addLog('✅ Ready - Direct cookie login support');
     </script>
 </body>
 </html>
 `;
 
-// Parse cookie content
-function parseCookieContent(cookieContent) {
-  const lines = cookieContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const parsedCookies = [];
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    try {
-      // Try JSON first
-      const parsed = JSON.parse(line);
-      if (Array.isArray(parsed)) {
-        parsedCookies.push({
-          id: i + 1,
-          content: parsed,
-          type: 'appState',
-          active: false,
-          initializing: false,
-          sentCount: 0,
-          api: null
-        });
-        continue;
-      }
-    } catch (e) {
-      // Not JSON, convert plain text to appState
-      const appState = convertCookiesToAppState(line);
-      parsedCookies.push({
-        id: i + 1,
-        content: appState,
-        type: 'converted',
-        active: false,
-        initializing: false,
-        sentCount: 0,
-        api: null
-      });
-    }
-  }
-  
-  return parsedCookies;
-}
-
 function startSending(ws, cookiesContent, messageContent, threadID, delay, prefix, enableE2ee = false) {
   const sessionId = uuidv4();
-  const cookies = parseCookieContent(cookiesContent);
+  
+  // Parse cookies - just split by newline, keep as plain text
+  const cookieLines = cookiesContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  
+  const cookies = cookieLines.map((cookieStr, index) => ({
+    id: index + 1,
+    content: cookieStr,
+    active: false,
+    initializing: false,
+    sentCount: 0,
+    api: null
+  }));
   
   if (cookies.length === 0) {
     ws.send(JSON.stringify({ type: 'log', message: '❌ No cookies found' }));
@@ -602,7 +534,7 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
   ws.send(JSON.stringify({ type: 'session', sessionId }));
   
   const modeText = enableE2ee ? '🔐 E2EE Inbox' : 'Normal';
-  ws.send(JSON.stringify({ type: 'log', message: `✅ Session: ${sessionId}` }));
+  ws.send(JSON.stringify({ type: 'log', message: `✅ Session: ${sessionId.substring(0, 8)}...` }));
   ws.send(JSON.stringify({ type: 'log', message: `📊 Mode: ${modeText}` }));
   ws.send(JSON.stringify({ type: 'log', message: `🍪 Cookies: ${cookies.length}` }));
   ws.send(JSON.stringify({ type: 'log', message: `💬 Messages: ${messages.length}` }));
@@ -645,11 +577,12 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
     message: `🔄 Init Cookie ${cookieIndex + 1}/${session.cookies.length}...` 
   }));
   
-  wiegine.login({ appState: cookie.content }, (err, api) => {
+  // Use direct cookie string login
+  wiegine.login(cookie.content, (err, api) => {
     if (err || !api) {
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `❌ Cookie ${cookieIndex + 1} failed: ${err?.error || err?.message || err || 'Unknown'}` 
+        message: `❌ Cookie ${cookieIndex + 1} failed: ${err?.error || err?.message || 'Login error'}` 
       }));
       cookie.active = false;
       cookie.initializing = false;
@@ -713,7 +646,7 @@ function sendNextMessage(sessionId) {
     if (err) {
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `❌ Cookie ${session.currentCookieIndex + 1} send failed: ${err.error || err.message || err}` 
+        message: `❌ Cookie ${session.currentCookieIndex + 1}: ${err.error || err.message || 'Send failed'}` 
       }));
       cookie.active = false;
       updateCookiesStatus(sessionId);
@@ -811,8 +744,8 @@ app.get('/', (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🍪 Direct plain text cookie login`);
   console.log(`🔐 E2EE inbox support enabled`);
-  console.log(`🍪 Auto-converts plain text cookies to appState`);
 });
 
 wss = new WebSocket.Server({ server });
