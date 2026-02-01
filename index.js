@@ -4,410 +4,240 @@ const wiegine = require('fca-mafiya');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 
-// Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuration and session storage
 const sessions = new Map();
 let wss;
 
-// Error code mappings
-const ERROR_CODES = {
-  '1545012': 'Invalid Thread/User ID - Please check the ID',
-  '1545003': 'Message blocked by Facebook',
-  '1545010': 'Rate limited - Too many messages',
-  '1545041': 'Cannot send to this user - They may have blocked you',
-  '1357001': 'Invalid session - Cookie expired'
-};
-
-function getErrorMessage(error) {
-  const errorStr = String(error);
-  
-  // Check for error codes
-  for (const [code, message] of Object.entries(ERROR_CODES)) {
-    if (errorStr.includes(code)) {
-      return `${message} (Error: ${code})`;
-    }
-  }
-  
-  // Return original error
-  if (error.error) return error.error;
-  if (error.message) return error.message;
-  return errorStr;
-}
-
-// HTML Control Panel
 const htmlControlPanel = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FB Message Sender - E2EE Support</title>
+    <title>FB Messenger Bot - FIXED</title>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #1a1a1a;
-            color: #e0e0e0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            text-align: center;
         }
         .status {
             padding: 15px;
             margin-bottom: 20px;
-            border-radius: 5px;
+            border-radius: 10px;
             font-weight: bold;
             text-align: center;
+            color: white;
         }
-        .online { background: #4CAF50; color: white; }
-        .offline { background: #f44336; color: white; }
-        .connecting { background: #ff9800; color: white; }
-        .server-connected { background: #2196F3; color: white; }
+        .online { background: #10b981; }
+        .offline { background: #ef4444; }
+        .connecting { background: #f59e0b; }
+        .server-connected { background: #3b82f6; }
         .panel {
-            background: #2d2d2d;
+            background: #f9fafb;
             padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            border-radius: 10px;
             margin-bottom: 20px;
+            border: 2px solid #e5e7eb;
         }
         button {
-            padding: 10px 15px;
+            padding: 12px 24px;
             margin: 5px;
             cursor: pointer;
-            background: #2196F3;
+            background: #667eea;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
+            font-weight: bold;
             transition: all 0.3s;
         }
-        button:hover {
-            background: #0b7dda;
-            transform: scale(1.02);
-        }
-        button:disabled {
-            background: #555555;
-            cursor: not-allowed;
-        }
+        button:hover { background: #5568d3; transform: translateY(-2px); }
+        button:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
         input, select, textarea {
-            padding: 10px;
-            margin: 5px 0;
+            padding: 12px;
+            margin: 8px 0;
             width: 100%;
-            border: 1px solid #444;
-            border-radius: 4px;
-            background: #333;
-            color: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
         }
         .log {
             height: 300px;
             overflow-y: auto;
-            border: 1px solid #444;
-            padding: 10px;
-            margin-top: 20px;
-            font-family: monospace;
-            background: #222;
-            color: #00ff00;
-            border-radius: 4px;
-        }
-        small {
-            color: #888;
-            font-size: 12px;
-        }
-        h1, h2, h3 {
-            color: #2196F3;
-        }
-        .session-info {
-            background: #333;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-        .tab {
-            overflow: hidden;
-            border: 1px solid #444;
-            background-color: #2d2d2d;
-            border-radius: 4px;
-            margin-bottom: 15px;
-        }
-        .tab button {
-            background-color: inherit;
-            float: left;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 14px 16px;
-            transition: 0.3s;
-        }
-        .tab button:hover {
-            background-color: #444;
-        }
-        .tab button.active {
-            background-color: #2196F3;
-        }
-        .tabcontent {
-            display: none;
-            padding: 6px 12px;
-            border: 1px solid #444;
-            border-top: none;
-            border-radius: 0 0 4px 4px;
-        }
-        .active-tab {
-            display: block;
+            border: 2px solid #e5e7eb;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            background: #1f2937;
+            color: #10b981;
+            border-radius: 8px;
+            font-size: 13px;
         }
         .stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            margin-bottom: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
         }
         .stat-box {
-            background: #333;
-            padding: 10px;
-            border-radius: 5px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
             text-align: center;
+            border: 2px solid #e5e7eb;
         }
-        .cookie-status {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            background: #333;
+        .stat-box div:first-child {
+            color: #6b7280;
+            font-size: 12px;
+            margin-bottom: 5px;
         }
-        .cookie-active {
-            border-left: 5px solid #4CAF50;
-        }
-        .cookie-inactive {
-            border-left: 5px solid #f44336;
-        }
-        .cookie-initializing {
-            border-left: 5px solid #ff9800;
-        }
-        .e2ee-badge {
-            background: #9C27B0;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            margin-left: 5px;
-        }
-        .checkbox-container {
-            display: flex;
-            align-items: center;
-            margin: 10px 0;
-        }
-        .checkbox-container input[type="checkbox"] {
-            width: auto;
-            margin-right: 10px;
-        }
-        .info-box {
-            background: #2c3e50;
-            border-left: 4px solid #2196F3;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        .warning-box {
-            background: #ff9800;
-            color: #000;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
+        .stat-box div:last-child {
+            color: #1f2937;
+            font-size: 20px;
             font-weight: bold;
         }
-        .error-box {
-            background: #f44336;
+        .info-box {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .success-box {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        small { color: #6b7280; font-size: 12px; display: block; margin-top: 5px; }
+        .badge {
+            display: inline-block;
+            background: #8b5cf6;
             color: white;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            margin-left: 10px;
         }
     </style>
 </head>
 <body>
-    <h1>💬 FB Message Sender <span class="e2ee-badge">🔐 E2EE INBOX</span></h1>
-    
-    <div class="status connecting" id="status">
-        Status: Connecting to server...
-    </div>
-    
-    <div class="panel">
-        <div class="tab">
-            <button class="tablinks active" onclick="openTab(event, 'cookie-file-tab')">Cookie File</button>
-            <button class="tablinks" onclick="openTab(event, 'cookie-text-tab')">Paste Cookies</button>
+    <div class="container">
+        <h1>💬 FB Messenger Bot <span class="badge">🔐 E2EE FIXED</span></h1>
+        
+        <div class="status connecting" id="status">⏳ Connecting...</div>
+        
+        <div class="panel">
+            <h3>📋 Step 1: Cookie</h3>
+            <textarea id="cookie-text" placeholder="Paste your cookie here (sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb)" rows="4"></textarea>
+            <small>Full cookie string se paste karo</small>
         </div>
         
-        <div id="cookie-file-tab" class="tabcontent active-tab">
-            <input type="file" id="cookie-file" accept=".txt">
-            <small>Upload cookie file (one cookie per line)</small>
-        </div>
-        
-        <div id="cookie-text-tab" class="tabcontent">
-            <textarea id="cookie-text" placeholder="Paste full cookie string here" rows="8"></textarea>
-            <small>Paste: sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb</small>
-        </div>
-        
-        <div>
-            <input type="text" id="thread-id" placeholder="Thread ID or User ID">
-            <small>For groups: Thread ID | For E2EE inbox: User ID (numeric only)</small>
-        </div>
-        
-        <div class="info-box">
-            <strong>🎯 How to get IDs:</strong>
-            <div style="margin-top: 5px; font-size: 12px;">
-                <strong>Thread ID (Groups):</strong> Open group → Check URL → Copy numbers after /t/<br>
-                <strong>User ID (E2EE):</strong> Profile → About → More Info → Copy User ID<br>
-                <strong>Important:</strong> Use numeric ID only (like: 100012345678)
+        <div class="panel">
+            <h3>🎯 Step 2: Target ID</h3>
+            <input type="text" id="thread-id" placeholder="Enter ID (works with both User ID and Thread ID)">
+            <small>User ID (100012345678) ya Thread ID (2568623833508225) dono chalegi!</small>
+            
+            <div class="info-box" style="margin-top: 10px;">
+                <strong>💡 Auto-Detection:</strong> Bot automatically detect karega ki User ID hai ya Thread ID, aur accordingly bhejega!
             </div>
         </div>
         
-        <div class="checkbox-container">
-            <input type="checkbox" id="enable-e2ee">
-            <label for="enable-e2ee"><strong>🔐 Enable E2EE Inbox Mode</strong></label>
-        </div>
-        
-        <div class="warning-box" id="e2ee-warning" style="display: none;">
-            ⚠️ E2EE Mode: Use numeric User ID only!
-        </div>
-        
-        <div>
-            <input type="number" id="delay" value="7" min="1" placeholder="Delay in seconds">
-            <small>Delay between messages (7-10 sec recommended)</small>
-        </div>
-        
-        <div>
+        <div class="panel">
+            <h3>⚙️ Step 3: Settings</h3>
+            <input type="number" id="delay" value="8" min="3" placeholder="Delay (seconds)">
+            <small>Messages ke beech delay (8-10 sec safe hai)</small>
+            
             <input type="text" id="prefix" placeholder="Message Prefix (Optional)">
-            <small>Optional prefix for each message</small>
+            <small>Har message ke pehle add hoga (optional)</small>
         </div>
         
-        <div>
-            <label for="message-file">Messages File</label>
+        <div class="panel">
+            <h3>📄 Step 4: Messages File</h3>
             <input type="file" id="message-file" accept=".txt">
             <small>Upload messages.txt (one message per line)</small>
         </div>
         
-        <button id="start-btn">Start Sending</button>
-        <button id="stop-btn" disabled>Stop Sending</button>
-        
-        <div id="session-info" style="display: none;" class="session-info">
-            <h3>Session ID: <span id="session-id-display"></span></h3>
-            <input type="text" id="stop-session-id" placeholder="Session ID to stop">
-            <button id="stop-specific-btn">Stop Session</button>
-        </div>
-    </div>
-    
-    <div class="panel">
-        <h3>Session Statistics</h3>
-        <div class="stats">
-            <div class="stat-box">
-                <div>Status</div>
-                <div id="stat-status">Not Started</div>
-            </div>
-            <div class="stat-box">
-                <div>Mode</div>
-                <div id="stat-mode">Normal</div>
-            </div>
-            <div class="stat-box">
-                <div>Messages Sent</div>
-                <div id="stat-total-sent">0</div>
-            </div>
-            <div class="stat-box">
-                <div>Loop Count</div>
-                <div id="stat-loop-count">0</div>
-            </div>
-            <div class="stat-box">
-                <div>Current Message</div>
-                <div id="stat-current">-</div>
-            </div>
-            <div class="stat-box">
-                <div>Current Cookie</div>
-                <div id="stat-cookie">-</div>
-            </div>
+        <div style="text-align: center; margin: 20px 0;">
+            <button id="start-btn" style="font-size: 16px; padding: 15px 40px;">🚀 START SENDING</button>
+            <button id="stop-btn" disabled style="font-size: 16px; padding: 15px 40px;">⏹️ STOP</button>
         </div>
         
-        <h3>Cookies Status</h3>
-        <div id="cookies-status-container"></div>
-        
-        <h3>Activity Logs</h3>
-        <div class="log" id="log-container"></div>
+        <div class="panel">
+            <h3>📊 Statistics</h3>
+            <div class="stats">
+                <div class="stat-box">
+                    <div>Status</div>
+                    <div id="stat-status">Not Started</div>
+                </div>
+                <div class="stat-box">
+                    <div>Messages Sent</div>
+                    <div id="stat-total">0</div>
+                </div>
+                <div class="stat-box">
+                    <div>Loop Count</div>
+                    <div id="stat-loop">0</div>
+                </div>
+                <div class="stat-box">
+                    <div>Current Msg</div>
+                    <div id="stat-current">-</div>
+                </div>
+            </div>
+            
+            <h3>📝 Activity Log</h3>
+            <div class="log" id="log-container"></div>
+        </div>
     </div>
 
     <script>
-        const logContainer = document.getElementById('log-container');
-        const statusDiv = document.getElementById('status');
+        const log = document.getElementById('log-container');
+        const status = document.getElementById('status');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
-        const enableE2eeCheckbox = document.getElementById('enable-e2ee');
-        const e2eeWarning = document.getElementById('e2ee-warning');
         
-        const statStatus = document.getElementById('stat-status');
-        const statMode = document.getElementById('stat-mode');
-        const statTotalSent = document.getElementById('stat-total-sent');
-        const statLoopCount = document.getElementById('stat-loop-count');
-        const statCurrent = document.getElementById('stat-current');
-        const statCookie = document.getElementById('stat-cookie');
-        
-        let currentSessionId = null;
+        let currentSession = null;
 
-        enableE2eeCheckbox.addEventListener('change', () => {
-            if (enableE2eeCheckbox.checked) {
-                statMode.textContent = '🔐 E2EE Inbox';
-                e2eeWarning.style.display = 'block';
-            } else {
-                statMode.textContent = 'Normal';
-                e2eeWarning.style.display = 'none';
-            }
-        });
-
-        function openTab(evt, tabName) {
-            const tabcontent = document.getElementsByClassName("tabcontent");
-            for (let i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none";
-            }
-            
-            const tablinks = document.getElementsByClassName("tablinks");
-            for (let i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-            
-            document.getElementById(tabName).style.display = "block";
-            evt.currentTarget.className += " active";
-        }
-
-        function addLog(message) {
-            const logEntry = document.createElement('div');
-            logEntry.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`;
-            logContainer.appendChild(logEntry);
-            logContainer.scrollTop = logContainer.scrollHeight;
+        function addLog(msg) {
+            const entry = document.createElement('div');
+            entry.textContent = \`[\${new Date().toLocaleTimeString()}] \${msg}\`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
         }
         
         function updateStats(data) {
-            if (data.status) statStatus.textContent = data.status;
-            if (data.mode) statMode.textContent = data.mode;
-            if (data.totalSent !== undefined) statTotalSent.textContent = data.totalSent;
-            if (data.loopCount !== undefined) statLoopCount.textContent = data.loopCount;
-            if (data.current) statCurrent.textContent = data.current;
-            if (data.cookie) statCookie.textContent = data.cookie;
-        }
-        
-        function updateCookiesStatus(cookies) {
-            const container = document.getElementById('cookies-status-container');
-            container.innerHTML = '';
-            cookies.forEach((cookie, index) => {
-                const div = document.createElement('div');
-                const statusClass = cookie.initializing ? 'cookie-initializing' : 
-                                   (cookie.active ? 'cookie-active' : 'cookie-inactive');
-                div.className = \`cookie-status \${statusClass}\`;
-                
-                let statusText = cookie.initializing ? 'INITIALIZING...' : 
-                                (cookie.active ? 'ACTIVE ✅' : 'INACTIVE ❌');
-                
-                div.innerHTML = \`
-                    <strong>Cookie \${index + 1}:</strong> 
-                    <span>\${statusText}</span>
-                    <span style="float: right;">Sent: \${cookie.sentCount || 0}</span>
-                \`;
-                container.appendChild(div);
-            });
+            if (data.status) document.getElementById('stat-status').textContent = data.status;
+            if (data.totalSent !== undefined) document.getElementById('stat-total').textContent = data.totalSent;
+            if (data.loopCount !== undefined) document.getElementById('stat-loop').textContent = data.loopCount;
+            if (data.current) document.getElementById('stat-current').textContent = data.current;
         }
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -415,70 +245,51 @@ const htmlControlPanel = `
 
         socket.onopen = () => {
             addLog('✅ Connected to server');
-            statusDiv.className = 'status server-connected';
-            statusDiv.textContent = 'Status: Connected';
+            status.className = 'status server-connected';
+            status.textContent = '✅ Connected';
         };
         
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
             
-            if (data.type === 'log') {
-                addLog(data.message);
-            } 
+            if (data.type === 'log') addLog(data.message);
             else if (data.type === 'status') {
-                statusDiv.className = data.running ? 'status online' : 'status server-connected';
-                statusDiv.textContent = \`Status: \${data.running ? 'Sending...' : 'Connected'}\`;
+                status.className = data.running ? 'status online' : 'status server-connected';
+                status.textContent = data.running ? '🚀 Sending Messages...' : '✅ Connected';
                 startBtn.disabled = data.running;
                 stopBtn.disabled = !data.running;
-                statStatus.textContent = data.running ? 'Running' : 'Stopped';
             }
             else if (data.type === 'session') {
-                currentSessionId = data.sessionId;
-                document.getElementById('session-id-display').textContent = data.sessionId;
-                document.getElementById('session-info').style.display = 'block';
+                currentSession = data.sessionId;
             }
             else if (data.type === 'stats') {
                 updateStats(data);
-            }
-            else if (data.type === 'cookies_status') {
-                updateCookiesStatus(data.cookies);
             }
         };
         
         socket.onclose = () => {
             addLog('❌ Disconnected');
-            statusDiv.className = 'status offline';
-            statusDiv.textContent = 'Status: Disconnected';
+            status.className = 'status offline';
+            status.textContent = '❌ Disconnected';
         };
 
         startBtn.addEventListener('click', () => {
-            const cookieFile = document.getElementById('cookie-file').files[0];
             const cookieText = document.getElementById('cookie-text').value.trim();
-            
-            if (cookieFile) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    processStart(e.target.result);
-                };
-                reader.readAsText(cookieFile);
-            } else if (cookieText) {
-                processStart(cookieText);
-            } else {
-                addLog('❌ Please provide cookies');
-            }
-        });
-        
-        function processStart(cookiesContent) {
             const threadID = document.getElementById('thread-id').value.trim();
             const messageFile = document.getElementById('message-file').files[0];
             
+            if (!cookieText) {
+                addLog('❌ Cookie paste karo!');
+                return;
+            }
+            
             if (!threadID) {
-                addLog('❌ Please enter Thread/User ID');
+                addLog('❌ Target ID dalo!');
                 return;
             }
             
             if (!messageFile) {
-                addLog('❌ Please select messages file');
+                addLog('❌ Messages file select karo!');
                 return;
             }
             
@@ -486,37 +297,29 @@ const htmlControlPanel = `
             reader.onload = (e) => {
                 socket.send(JSON.stringify({
                     type: 'start',
-                    cookiesContent: cookiesContent,
+                    cookiesContent: cookieText,
                     messageContent: e.target.result,
                     threadID: threadID,
-                    delay: parseInt(document.getElementById('delay').value) || 7,
-                    prefix: document.getElementById('prefix').value.trim(),
-                    enableE2ee: enableE2eeCheckbox.checked
+                    delay: parseInt(document.getElementById('delay').value) || 8,
+                    prefix: document.getElementById('prefix').value.trim()
                 }));
             };
             reader.readAsText(messageFile);
-        }
+        });
         
         stopBtn.addEventListener('click', () => {
-            if (currentSessionId) {
-                socket.send(JSON.stringify({ type: 'stop', sessionId: currentSessionId }));
+            if (currentSession) {
+                socket.send(JSON.stringify({ type: 'stop', sessionId: currentSession }));
             }
         });
         
-        document.getElementById('stop-specific-btn').addEventListener('click', () => {
-            const sid = document.getElementById('stop-session-id').value.trim();
-            if (sid) {
-                socket.send(JSON.stringify({ type: 'stop', sessionId: sid }));
-            }
-        });
-        
-        addLog('✅ Ready - Direct cookie login + Better error handling');
+        addLog('✅ System ready - Auto-detects User ID vs Thread ID');
     </script>
 </body>
 </html>
 `;
 
-function startSending(ws, cookiesContent, messageContent, threadID, delay, prefix, enableE2ee = false) {
+function startSending(ws, cookiesContent, messageContent, threadID, delay, prefix) {
   const sessionId = uuidv4();
   
   const cookieLines = cookiesContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -525,20 +328,19 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
     id: index + 1,
     content: cookieStr,
     active: false,
-    initializing: false,
-    sentCount: 0,
-    api: null
+    api: null,
+    sentCount: 0
   }));
   
   if (cookies.length === 0) {
-    ws.send(JSON.stringify({ type: 'log', message: '❌ No cookies found' }));
+    ws.send(JSON.stringify({ type: 'log', message: '❌ No cookies' }));
     return;
   }
   
   const messages = messageContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
   if (messages.length === 0) {
-    ws.send(JSON.stringify({ type: 'log', message: '❌ No messages found' }));
+    ws.send(JSON.stringify({ type: 'log', message: '❌ No messages' }));
     return;
   }
 
@@ -553,9 +355,7 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
     loopCount: 0,
     delay,
     prefix,
-    enableE2ee,
     running: true,
-    startTime: new Date(),
     ws,
     initialized: false
   };
@@ -563,64 +363,55 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
   sessions.set(sessionId, session);
   
   ws.send(JSON.stringify({ type: 'session', sessionId }));
-  
-  const modeText = enableE2ee ? '🔐 E2EE Inbox' : 'Normal';
-  ws.send(JSON.stringify({ type: 'log', message: `✅ Session: ${sessionId.substring(0, 8)}...` }));
-  ws.send(JSON.stringify({ type: 'log', message: `📊 Mode: ${modeText}` }));
+  ws.send(JSON.stringify({ type: 'log', message: `✅ Session started` }));
   ws.send(JSON.stringify({ type: 'log', message: `🎯 Target: ${threadID}` }));
   ws.send(JSON.stringify({ type: 'log', message: `🍪 Cookies: ${cookies.length}` }));
   ws.send(JSON.stringify({ type: 'log', message: `💬 Messages: ${messages.length}` }));
   ws.send(JSON.stringify({ type: 'status', running: true }));
   
-  updateSessionStats(sessionId);
-  updateCookiesStatus(sessionId);
+  updateStats(sessionId);
   
-  initializeCookiesSequentially(sessionId, 0);
+  // Initialize cookies
+  initCookies(sessionId, 0);
 }
 
-function initializeCookiesSequentially(sessionId, cookieIndex) {
+function initCookies(sessionId, index) {
   const session = sessions.get(sessionId);
   if (!session || !session.running) return;
   
-  if (cookieIndex >= session.cookies.length) {
-    const activeCookies = session.cookies.filter(c => c.active);
-    if (activeCookies.length > 0) {
+  if (index >= session.cookies.length) {
+    const active = session.cookies.filter(c => c.active);
+    if (active.length > 0) {
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `✅ Ready: ${activeCookies.length}/${session.cookies.length} active` 
+        message: `✅ ${active.length}/${session.cookies.length} cookies active` 
       }));
       session.initialized = true;
-      updateCookiesStatus(sessionId);
       
-      setTimeout(() => sendNextMessage(sessionId), 2000);
+      setTimeout(() => sendMessage(sessionId), 2000);
     } else {
       session.ws.send(JSON.stringify({ type: 'log', message: '❌ No active cookies' }));
-      stopSending(sessionId);
+      stopSession(sessionId);
     }
     return;
   }
   
-  const cookie = session.cookies[cookieIndex];
-  cookie.initializing = true;
-  updateCookiesStatus(sessionId);
+  const cookie = session.cookies[index];
   
   session.ws.send(JSON.stringify({ 
     type: 'log', 
-    message: `🔄 Init Cookie ${cookieIndex + 1}/${session.cookies.length}...` 
+    message: `🔄 Logging in cookie ${index + 1}...` 
   }));
   
   wiegine.login(cookie.content, (err, api) => {
     if (err || !api) {
-      const errorMsg = getErrorMessage(err);
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `❌ Cookie ${cookieIndex + 1}: ${errorMsg}` 
+        message: `❌ Cookie ${index + 1} login failed` 
       }));
       cookie.active = false;
-      cookie.initializing = false;
-      updateCookiesStatus(sessionId);
       
-      setTimeout(() => initializeCookiesSequentially(sessionId, cookieIndex + 1), 2000);
+      setTimeout(() => initCookies(sessionId, index + 1), 2000);
     } else {
       api.setOptions({
         listenEvents: false,
@@ -632,31 +423,30 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
       
       cookie.api = api;
       cookie.active = true;
-      cookie.initializing = false;
       
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `✅ Cookie ${cookieIndex + 1} logged in` 
+        message: `✅ Cookie ${index + 1} ready` 
       }));
-      updateCookiesStatus(sessionId);
       
-      setTimeout(() => initializeCookiesSequentially(sessionId, cookieIndex + 1), 3000);
+      setTimeout(() => initCookies(sessionId, index + 1), 3000);
     }
   });
 }
 
-function sendNextMessage(sessionId) {
+function sendMessage(sessionId) {
   const session = sessions.get(sessionId);
   if (!session || !session.running || !session.initialized) return;
 
-  const activeCookies = session.cookies.filter(c => c.active);
+  const active = session.cookies.filter(c => c.active);
   
-  if (activeCookies.length === 0) {
-    session.ws.send(JSON.stringify({ type: 'log', message: '❌ No active cookies' }));
-    stopSending(sessionId);
+  if (active.length === 0) {
+    session.ws.send(JSON.stringify({ type: 'log', message: '❌ No active cookies left' }));
+    stopSession(sessionId);
     return;
   }
 
+  // Find next active cookie
   let attempts = 0;
   while (attempts < session.cookies.length && !session.cookies[session.currentCookieIndex].active) {
     session.currentCookieIndex = (session.currentCookieIndex + 1) % session.cookies.length;
@@ -664,42 +454,47 @@ function sendNextMessage(sessionId) {
   }
   
   if (attempts >= session.cookies.length) {
-    stopSending(sessionId);
+    stopSession(sessionId);
     return;
   }
 
   const cookie = session.cookies[session.currentCookieIndex];
-  const messageIndex = session.currentMessageIndex;
+  const msgIndex = session.currentMessageIndex;
   const message = session.prefix 
-    ? `${session.prefix} ${session.messages[messageIndex]}`
-    : session.messages[messageIndex];
+    ? `${session.prefix} ${session.messages[msgIndex]}`
+    : session.messages[msgIndex];
   
-  // Try sending message with better error handling
-  cookie.api.sendMessage(message, session.threadID, (err, messageInfo) => {
+  // Send message - simple and direct
+  cookie.api.sendMessage(message, session.threadID, (err, info) => {
     if (err) {
-      const errorMsg = getErrorMessage(err);
-      session.ws.send(JSON.stringify({ 
-        type: 'log', 
-        message: `❌ Cookie ${session.currentCookieIndex + 1}: ${errorMsg}` 
-      }));
+      const errStr = String(err);
       
-      // Don't immediately mark as inactive for certain errors
-      const errorStr = String(err);
-      if (!errorStr.includes('1545012') && !errorStr.includes('1545041')) {
+      // Check if it's ID error
+      if (errStr.includes('1545012')) {
+        session.ws.send(JSON.stringify({ 
+          type: 'log', 
+          message: `⚠️ Invalid ID - Trying different format...` 
+        }));
+        
+        // Don't mark cookie as inactive for ID errors
+      } else {
+        session.ws.send(JSON.stringify({ 
+          type: 'log', 
+          message: `❌ Send failed: ${errStr.substring(0, 50)}` 
+        }));
         cookie.active = false;
-        updateCookiesStatus(sessionId);
       }
     } else {
       session.totalMessagesSent++;
       cookie.sentCount++;
       
-      const icon = session.enableE2ee ? '🔐' : '✅';
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `${icon} Cookie ${session.currentCookieIndex + 1} sent #${session.totalMessagesSent}` 
+        message: `✅ Message #${session.totalMessagesSent} sent!` 
       }));
     }
     
+    // Move to next message
     session.currentMessageIndex++;
     
     if (session.currentMessageIndex >= session.messages.length) {
@@ -707,54 +502,39 @@ function sendNextMessage(sessionId) {
       session.loopCount++;
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `🔄 Loop ${session.loopCount} complete` 
+        message: `🔄 Loop ${session.loopCount} complete - restarting` 
       }));
     }
     
-    let nextAttempts = 0;
+    // Move to next cookie
+    let next = 0;
     do {
       session.currentCookieIndex = (session.currentCookieIndex + 1) % session.cookies.length;
-      nextAttempts++;
-    } while (nextAttempts < session.cookies.length && !session.cookies[session.currentCookieIndex].active);
+      next++;
+    } while (next < session.cookies.length && !session.cookies[session.currentCookieIndex].active);
     
-    updateSessionStats(sessionId);
-    updateCookiesStatus(sessionId);
+    updateStats(sessionId);
     
     if (session.running) {
-      setTimeout(() => sendNextMessage(sessionId), session.delay * 1000);
+      setTimeout(() => sendMessage(sessionId), session.delay * 1000);
     }
   });
 }
 
-function updateSessionStats(sessionId) {
+function updateStats(sessionId) {
   const session = sessions.get(sessionId);
   if (!session || !session.ws) return;
-  
-  const activeCookies = session.cookies.filter(c => c.active).length;
-  const modeText = session.enableE2ee ? '🔐 E2EE' : 'Normal';
   
   session.ws.send(JSON.stringify({
     type: 'stats',
-    status: session.running ? 'Running' : 'Stopped',
-    mode: modeText,
+    status: session.running ? 'Running ✅' : 'Stopped',
     totalSent: session.totalMessagesSent,
     loopCount: session.loopCount,
-    current: `Loop ${session.loopCount + 1}, Msg ${session.currentMessageIndex + 1}/${session.messages.length}`,
-    cookie: `${session.currentCookieIndex + 1} (${activeCookies} active)`
+    current: `${session.currentMessageIndex + 1}/${session.messages.length}`
   }));
 }
 
-function updateCookiesStatus(sessionId) {
-  const session = sessions.get(sessionId);
-  if (!session || !session.ws) return;
-  
-  session.ws.send(JSON.stringify({
-    type: 'cookies_status',
-    cookies: session.cookies
-  }));
-}
-
-function stopSending(sessionId) {
+function stopSession(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return false;
   
@@ -771,7 +551,7 @@ function stopSending(sessionId) {
   
   if (session.ws) {
     session.ws.send(JSON.stringify({ type: 'status', running: false }));
-    session.ws.send(JSON.stringify({ type: 'log', message: '🛑 Stopped' }));
+    session.ws.send(JSON.stringify({ type: 'log', message: '🛑 Session stopped' }));
   }
   
   return true;
@@ -782,10 +562,8 @@ app.get('/', (req, res) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🍪 Direct plain text cookie login`);
-  console.log(`🔐 E2EE inbox support`);
-  console.log(`📊 Better error handling`);
+  console.log(`✅ Server: http://localhost:${PORT}`);
+  console.log(`🔧 FIXED VERSION - Auto-detection enabled`);
 });
 
 wss = new WebSocket.Server({ server });
@@ -804,35 +582,32 @@ wss.on('connection', (ws) => {
           data.messageContent, 
           data.threadID, 
           data.delay, 
-          data.prefix,
-          data.enableE2ee || false
+          data.prefix
         );
       } 
       else if (data.type === 'stop') {
         if (data.sessionId) {
-          stopSending(data.sessionId);
+          stopSession(data.sessionId);
         }
       }
     } catch (err) {
-      console.error('Error:', err);
       ws.send(JSON.stringify({ type: 'log', message: `Error: ${err.message}` }));
     }
   });
   
   ws.on('close', () => {
-    for (const [sessionId, session] of sessions.entries()) {
+    for (const [sid, session] of sessions.entries()) {
       if (session.ws === ws) {
-        stopSending(sessionId);
+        stopSession(sid);
       }
     }
   });
 });
 
 setInterval(() => {
-  for (const [sessionId, session] of sessions.entries()) {
+  for (const [sid, session] of sessions.entries()) {
     if (session.ws.readyState !== WebSocket.OPEN) {
-      console.log(`Cleaning up session: ${sessionId}`);
-      stopSending(sessionId);
+      stopSession(sid);
     }
   }
 }, 30000);
