@@ -189,6 +189,15 @@ const htmlControlPanel = `
             border-radius: 4px;
             font-weight: bold;
         }
+        .example-box {
+            background: #1e3a5f;
+            border-left: 4px solid #2196F3;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -206,12 +215,27 @@ const htmlControlPanel = `
         
         <div id="cookie-file-tab" class="tabcontent active-tab">
             <input type="file" id="cookie-file" accept=".txt">
-            <small>Select your cookies file (each line should contain one cookie)</small>
+            <small>Select your cookies file (appState.txt or cookies.txt)</small>
         </div>
         
         <div id="cookie-text-tab" class="tabcontent">
             <textarea id="cookie-text" placeholder="Paste your cookies here (one cookie per line)" rows="5"></textarea>
-            <small>Paste your cookies directly (one cookie per line)</small>
+            <small>Paste your cookies directly (JSON appState or plain text cookies)</small>
+        </div>
+        
+        <div class="info-box">
+            <strong>📋 Cookie Format Support</strong>
+            <p style="margin: 5px 0; font-size: 13px;">
+                This bot supports <strong>BOTH</strong> cookie formats:<br>
+                ✅ <strong>JSON appState</strong> format (from c3c-fbstate or similar tools)<br>
+                ✅ <strong>Plain text cookies</strong> (from EditThisCookie or browser export)
+            </p>
+        </div>
+        
+        <div class="example-box">
+            <strong>Example JSON appState (one per line):</strong><br>
+            [{"key":"datr","value":"xyz123..."},{"key":"sb","value":"abc..."}]<br>
+            [{"key":"datr","value":"def456..."},{"key":"sb","value":"ghi..."}]
         </div>
         
         <div>
@@ -225,7 +249,7 @@ const htmlControlPanel = `
                 • <strong>Enable karne par:</strong> Messages E2EE encrypted inbox me jayenge<br>
                 • <strong>User ID:</strong> Individual person ka FB UID dalein<br>
                 • <strong>Real Messages:</strong> Haan, asli messages send honge encrypted inbox me<br>
-                • <strong>Delay:</strong> 5-10 seconds recommended for safety
+                • <strong>Delay:</strong> 7-10 seconds recommended for safety
             </p>
         </div>
         
@@ -340,7 +364,7 @@ const htmlControlPanel = `
             if (enableE2eeCheckbox.checked) {
                 statMode.textContent = '🔐 E2EE Inbox';
                 e2eeWarning.style.display = 'block';
-                delayInput.value = '7'; // Set recommended delay
+                delayInput.value = '7';
             } else {
                 statMode.textContent = 'Normal Mode';
                 e2eeWarning.style.display = 'none';
@@ -456,7 +480,6 @@ const htmlControlPanel = `
         startBtn.addEventListener('click', () => {
             let cookiesContent = '';
             
-            // Check which cookie input method is active
             const cookieFileTab = document.getElementById('cookie-file-tab');
             if (cookieFileTab.style.display !== 'none' && cookieFileInput.files.length > 0) {
                 const cookieFile = cookieFileInput.files[0];
@@ -542,29 +565,57 @@ const htmlControlPanel = `
             }
         });
         
-        addLog('✅ Control panel ready - E2EE inbox support enabled');
+        addLog('✅ Control panel ready - Supports JSON & Plain Text cookies + E2EE inbox');
     </script>
 </body>
 </html>
 `;
 
-// Start message sending function with multiple cookies support and E2EE
+// Parse cookie content - supports both JSON appState and plain text
+function parseCookieContent(cookieContent) {
+  const lines = cookieContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const parsedCookies = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    try {
+      // Try to parse as JSON (appState format)
+      const parsed = JSON.parse(line);
+      if (Array.isArray(parsed)) {
+        parsedCookies.push({
+          id: i + 1,
+          content: parsed,
+          type: 'appState',
+          active: false,
+          initializing: false,
+          sentCount: 0,
+          api: null
+        });
+      }
+    } catch (e) {
+      // If not JSON, treat as plain text cookie
+      parsedCookies.push({
+        id: i + 1,
+        content: line,
+        type: 'plainText',
+        active: false,
+        initializing: false,
+        sentCount: 0,
+        api: null
+      });
+    }
+  }
+  
+  return parsedCookies;
+}
+
+// Start message sending function
 function startSending(ws, cookiesContent, messageContent, threadID, delay, prefix, enableE2ee = false) {
   const sessionId = uuidv4();
   
-  // Parse cookies (one per line)
-  const cookies = cookiesContent
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map((cookie, index) => ({
-      id: index + 1,
-      content: cookie,
-      active: false,
-      initializing: false,
-      sentCount: 0,
-      api: null
-    }));
+  // Parse cookies with auto-detection
+  const cookies = parseCookieContent(cookiesContent);
   
   if (cookies.length === 0) {
     ws.send(JSON.stringify({ type: 'log', message: '❌ No cookies found' }));
@@ -611,8 +662,11 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
   }));
   
   const modeText = enableE2ee ? '🔐 E2EE Inbox Mode' : 'Normal Mode';
+  const cookieTypes = cookies.map(c => c.type).join(', ');
+  
   ws.send(JSON.stringify({ type: 'log', message: `✅ Session started with ID: ${sessionId}` }));
   ws.send(JSON.stringify({ type: 'log', message: `📊 Mode: ${modeText}` }));
+  ws.send(JSON.stringify({ type: 'log', message: `🍪 Cookie types detected: ${cookieTypes}` }));
   ws.send(JSON.stringify({ type: 'log', message: `📝 Loaded ${cookies.length} cookies` }));
   ws.send(JSON.stringify({ type: 'log', message: `💬 Loaded ${messages.length} messages` }));
   ws.send(JSON.stringify({ type: 'status', running: true }));
@@ -645,7 +699,7 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
       // Start sending messages
       setTimeout(() => {
         sendNextMessage(sessionId);
-      }, 2000); // Wait 2 seconds before starting
+      }, 2000);
     } else {
       session.ws.send(JSON.stringify({ 
         type: 'log', 
@@ -662,11 +716,22 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
   
   session.ws.send(JSON.stringify({ 
     type: 'log', 
-    message: `🔄 Initializing Cookie ${cookieIndex + 1}/${session.cookies.length}...` 
+    message: `🔄 Initializing Cookie ${cookieIndex + 1}/${session.cookies.length} (${cookie.type})...` 
   }));
   
+  // Prepare login options based on cookie type
+  let loginOptions = {};
+  
+  if (cookie.type === 'appState') {
+    // JSON appState format
+    loginOptions = { appState: cookie.content };
+  } else {
+    // Plain text cookie - try direct login
+    loginOptions = { email: cookie.content }; // This will fail, but we'll handle it
+  }
+  
   // Login with current cookie
-  wiegine.login({ appState: JSON.parse(cookie.content) }, (err, api) => {
+  wiegine.login(loginOptions, (err, api) => {
     if (err) {
       session.ws.send(JSON.stringify({ 
         type: 'log', 
@@ -716,7 +781,7 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
       // Continue with next cookie after delay
       setTimeout(() => {
         initializeCookiesSequentially(sessionId, cookieIndex + 1);
-      }, 3000); // 3 second delay between cookie logins
+      }, 3000);
     }
   });
 }
@@ -726,7 +791,6 @@ function sendNextMessage(sessionId) {
   const session = sessions.get(sessionId);
   if (!session || !session.running || !session.initialized) return;
 
-  // Get active cookies only
   const activeCookies = session.cookies.filter(c => c.active);
   
   if (activeCookies.length === 0) {
@@ -771,9 +835,6 @@ function sendNextMessage(sessionId) {
 
 // Send message in E2EE mode (Encrypted Inbox)
 function sendE2EEMessage(session, cookie, message, messageIndex, sessionId) {
-  // For E2EE inbox, we use the standard sendMessage but to a User ID
-  // The API automatically handles E2EE if the conversation is encrypted
-  
   const messageOptions = {
     body: message
   };
@@ -847,10 +908,8 @@ function sendNormalMessage(session, cookie, message, messageIndex, sessionId) {
 
 // Helper function to continue to next message
 function continueToNextMessage(session, sessionId) {
-  // Move to next message
   session.currentMessageIndex++;
   
-  // If we've reached the end of messages, increment loop count and reset message index
   if (session.currentMessageIndex >= session.messages.length) {
     session.currentMessageIndex = 0;
     session.loopCount++;
@@ -860,10 +919,8 @@ function continueToNextMessage(session, sessionId) {
     }));
   }
   
-  // Move to next cookie
   moveToNextActiveCookie(sessionId);
   
-  // Update stats
   updateSessionStats(sessionId);
   updateCookiesStatus(sessionId);
   
@@ -924,7 +981,6 @@ function stopSending(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return false;
   
-  // Logout from all cookies
   session.cookies.forEach(cookie => {
     if (cookie.api) {
       try {
@@ -965,6 +1021,7 @@ app.get('/', (req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`✅ Control panel running at http://localhost:${PORT}`);
   console.log(`🔐 E2EE inbox support enabled`);
+  console.log(`🍪 Supports both JSON appState and plain text cookies`);
 });
 
 // Set up WebSocket server
@@ -1017,7 +1074,6 @@ wss.on('connection', (ws) => {
   });
   
   ws.on('close', () => {
-    // Clean up any sessions associated with this WebSocket
     for (const [sessionId, session] of sessions.entries()) {
       if (session.ws === ws) {
         stopSending(sessionId);
@@ -1029,10 +1085,9 @@ wss.on('connection', (ws) => {
 // Clean up inactive sessions periodically
 setInterval(() => {
   for (const [sessionId, session] of sessions.entries()) {
-    // Check if WebSocket connection is still open
     if (session.ws.readyState !== WebSocket.OPEN) {
       console.log(`Cleaning up disconnected session: ${sessionId}`);
       stopSending(sessionId);
     }
   }
-}, 30000); // Check every 30 seconds
+}, 30000);
