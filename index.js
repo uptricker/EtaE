@@ -12,6 +12,31 @@ const PORT = process.env.PORT || 3000;
 const sessions = new Map();
 let wss;
 
+// Error code mappings
+const ERROR_CODES = {
+  '1545012': 'Invalid Thread/User ID - Please check the ID',
+  '1545003': 'Message blocked by Facebook',
+  '1545010': 'Rate limited - Too many messages',
+  '1545041': 'Cannot send to this user - They may have blocked you',
+  '1357001': 'Invalid session - Cookie expired'
+};
+
+function getErrorMessage(error) {
+  const errorStr = String(error);
+  
+  // Check for error codes
+  for (const [code, message] of Object.entries(ERROR_CODES)) {
+    if (errorStr.includes(code)) {
+      return `${message} (Error: ${code})`;
+    }
+  }
+  
+  // Return original error
+  if (error.error) return error.error;
+  if (error.message) return error.message;
+  return errorStr;
+}
+
 // HTML Control Panel
 const htmlControlPanel = `
 <!DOCTYPE html>
@@ -189,6 +214,13 @@ const htmlControlPanel = `
             border-radius: 4px;
             font-weight: bold;
         }
+        .error-box {
+            background: #f44336;
+            color: white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -210,22 +242,22 @@ const htmlControlPanel = `
         </div>
         
         <div id="cookie-text-tab" class="tabcontent">
-            <textarea id="cookie-text" placeholder="Paste cookies here (one per line)&#10;&#10;Example:&#10;sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb" rows="8"></textarea>
-            <small>Paste full cookie string (sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb)</small>
-        </div>
-        
-        <div class="info-box">
-            <strong>🍪 Cookie Format</strong>
-            <div style="margin-top: 5px; font-size: 12px;">
-                Simply paste your full cookie string:<br>
-                <code>sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb;presence=xxx</code><br><br>
-                Multiple cookies? One per line!
-            </div>
+            <textarea id="cookie-text" placeholder="Paste full cookie string here" rows="8"></textarea>
+            <small>Paste: sb=xxx;datr=yyy;c_user=zzz;xs=aaa;fr=bbb</small>
         </div>
         
         <div>
-            <input type="text" id="thread-id" placeholder="User ID or Thread ID">
-            <small>Facebook User ID (for E2EE) or Thread ID (for groups)</small>
+            <input type="text" id="thread-id" placeholder="Thread ID or User ID">
+            <small>For groups: Thread ID | For E2EE inbox: User ID (numeric only)</small>
+        </div>
+        
+        <div class="info-box">
+            <strong>🎯 How to get IDs:</strong>
+            <div style="margin-top: 5px; font-size: 12px;">
+                <strong>Thread ID (Groups):</strong> Open group → Check URL → Copy numbers after /t/<br>
+                <strong>User ID (E2EE):</strong> Profile → About → More Info → Copy User ID<br>
+                <strong>Important:</strong> Use numeric ID only (like: 100012345678)
+            </div>
         </div>
         
         <div class="checkbox-container">
@@ -234,7 +266,7 @@ const htmlControlPanel = `
         </div>
         
         <div class="warning-box" id="e2ee-warning" style="display: none;">
-            ⚠️ E2EE Active! Messages will go to encrypted inbox
+            ⚠️ E2EE Mode: Use numeric User ID only!
         </div>
         
         <div>
@@ -478,7 +510,7 @@ const htmlControlPanel = `
             }
         });
         
-        addLog('✅ Ready - Direct cookie login support');
+        addLog('✅ Ready - Direct cookie login + Better error handling');
     </script>
 </body>
 </html>
@@ -487,7 +519,6 @@ const htmlControlPanel = `
 function startSending(ws, cookiesContent, messageContent, threadID, delay, prefix, enableE2ee = false) {
   const sessionId = uuidv4();
   
-  // Parse cookies - just split by newline, keep as plain text
   const cookieLines = cookiesContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
   const cookies = cookieLines.map((cookieStr, index) => ({
@@ -536,6 +567,7 @@ function startSending(ws, cookiesContent, messageContent, threadID, delay, prefi
   const modeText = enableE2ee ? '🔐 E2EE Inbox' : 'Normal';
   ws.send(JSON.stringify({ type: 'log', message: `✅ Session: ${sessionId.substring(0, 8)}...` }));
   ws.send(JSON.stringify({ type: 'log', message: `📊 Mode: ${modeText}` }));
+  ws.send(JSON.stringify({ type: 'log', message: `🎯 Target: ${threadID}` }));
   ws.send(JSON.stringify({ type: 'log', message: `🍪 Cookies: ${cookies.length}` }));
   ws.send(JSON.stringify({ type: 'log', message: `💬 Messages: ${messages.length}` }));
   ws.send(JSON.stringify({ type: 'status', running: true }));
@@ -577,12 +609,12 @@ function initializeCookiesSequentially(sessionId, cookieIndex) {
     message: `🔄 Init Cookie ${cookieIndex + 1}/${session.cookies.length}...` 
   }));
   
-  // Use direct cookie string login
   wiegine.login(cookie.content, (err, api) => {
     if (err || !api) {
+      const errorMsg = getErrorMessage(err);
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `❌ Cookie ${cookieIndex + 1} failed: ${err?.error || err?.message || 'Login error'}` 
+        message: `❌ Cookie ${cookieIndex + 1}: ${errorMsg}` 
       }));
       cookie.active = false;
       cookie.initializing = false;
@@ -642,14 +674,21 @@ function sendNextMessage(sessionId) {
     ? `${session.prefix} ${session.messages[messageIndex]}`
     : session.messages[messageIndex];
   
-  cookie.api.sendMessage(message, session.threadID, (err) => {
+  // Try sending message with better error handling
+  cookie.api.sendMessage(message, session.threadID, (err, messageInfo) => {
     if (err) {
+      const errorMsg = getErrorMessage(err);
       session.ws.send(JSON.stringify({ 
         type: 'log', 
-        message: `❌ Cookie ${session.currentCookieIndex + 1}: ${err.error || err.message || 'Send failed'}` 
+        message: `❌ Cookie ${session.currentCookieIndex + 1}: ${errorMsg}` 
       }));
-      cookie.active = false;
-      updateCookiesStatus(sessionId);
+      
+      // Don't immediately mark as inactive for certain errors
+      const errorStr = String(err);
+      if (!errorStr.includes('1545012') && !errorStr.includes('1545041')) {
+        cookie.active = false;
+        updateCookiesStatus(sessionId);
+      }
     } else {
       session.totalMessagesSent++;
       cookie.sentCount++;
@@ -745,7 +784,8 @@ app.get('/', (req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`🍪 Direct plain text cookie login`);
-  console.log(`🔐 E2EE inbox support enabled`);
+  console.log(`🔐 E2EE inbox support`);
+  console.log(`📊 Better error handling`);
 });
 
 wss = new WebSocket.Server({ server });
