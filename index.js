@@ -467,39 +467,51 @@ function sendMessage(sessionId) {
   // Send message - simple and direct
   cookie.api.sendMessage(message, session.threadID, (err, info) => {
     if (err) {
-      // Better error parsing
-      let errMsg = 'Unknown error';
+      // Better error parsing - ALWAYS convert to string
+      let errMsg = '';
       
-      if (err.error) {
-        errMsg = err.error;
-      } else if (err.message) {
-        errMsg = err.message;
-      } else if (typeof err === 'object') {
-        errMsg = JSON.stringify(err);
-      } else {
-        errMsg = String(err);
+      try {
+        if (typeof err === 'string') {
+          errMsg = err;
+        } else if (err.error) {
+          errMsg = String(err.error);
+        } else if (err.message) {
+          errMsg = String(err.message);
+        } else if (typeof err === 'object') {
+          errMsg = JSON.stringify(err);
+        } else {
+          errMsg = String(err);
+        }
+      } catch (e) {
+        errMsg = 'Unknown error';
       }
       
+      // Convert to string to be safe
+      errMsg = String(errMsg);
+      
+      session.ws.send(JSON.stringify({ 
+        type: 'log', 
+        message: `⚠️ Error details: ${errMsg.substring(0, 200)}` 
+      }));
+      
       // Check for specific errors
-      if (errMsg.includes('1545012') || errMsg.includes('Invalid thread')) {
+      if (errMsg.indexOf('1545012') !== -1 || errMsg.indexOf('Invalid thread') !== -1) {
         session.ws.send(JSON.stringify({ 
           type: 'log', 
-          message: `⚠️ Thread ID issue detected - Cookie still active, will retry` 
+          message: `⚠️ Thread ID issue - Cookie stays active, retrying...` 
         }));
-        // Don't mark cookie as inactive for ID errors - just skip this message
-      } else if (errMsg.includes('1545003') || errMsg.includes('blocked')) {
+        // Don't mark cookie as inactive for ID errors
+      } else if (errMsg.indexOf('1545003') !== -1 || errMsg.indexOf('blocked') !== -1) {
         session.ws.send(JSON.stringify({ 
           type: 'log', 
-          message: `⚠️ Message blocked by Facebook - Slowing down...` 
+          message: `⚠️ Message blocked - Slowing down...` 
         }));
-        // Increase delay temporarily
         session.delay = Math.min(session.delay + 2, 15);
       } else {
         session.ws.send(JSON.stringify({ 
           type: 'log', 
-          message: `❌ Error: ${errMsg.substring(0, 100)}` 
+          message: `❌ Cookie marked inactive due to error` 
         }));
-        // Only mark inactive for real errors
         cookie.active = false;
       }
     } else {
