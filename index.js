@@ -467,21 +467,39 @@ function sendMessage(sessionId) {
   // Send message - simple and direct
   cookie.api.sendMessage(message, session.threadID, (err, info) => {
     if (err) {
-      const errStr = String(err);
+      // Better error parsing
+      let errMsg = 'Unknown error';
       
-      // Check if it's ID error
-      if (errStr.includes('1545012')) {
+      if (err.error) {
+        errMsg = err.error;
+      } else if (err.message) {
+        errMsg = err.message;
+      } else if (typeof err === 'object') {
+        errMsg = JSON.stringify(err);
+      } else {
+        errMsg = String(err);
+      }
+      
+      // Check for specific errors
+      if (errMsg.includes('1545012') || errMsg.includes('Invalid thread')) {
         session.ws.send(JSON.stringify({ 
           type: 'log', 
-          message: `⚠️ Invalid ID - Trying different format...` 
+          message: `⚠️ Thread ID issue detected - Cookie still active, will retry` 
         }));
-        
-        // Don't mark cookie as inactive for ID errors
+        // Don't mark cookie as inactive for ID errors - just skip this message
+      } else if (errMsg.includes('1545003') || errMsg.includes('blocked')) {
+        session.ws.send(JSON.stringify({ 
+          type: 'log', 
+          message: `⚠️ Message blocked by Facebook - Slowing down...` 
+        }));
+        // Increase delay temporarily
+        session.delay = Math.min(session.delay + 2, 15);
       } else {
         session.ws.send(JSON.stringify({ 
           type: 'log', 
-          message: `❌ Send failed: ${errStr.substring(0, 50)}` 
+          message: `❌ Error: ${errMsg.substring(0, 100)}` 
         }));
+        // Only mark inactive for real errors
         cookie.active = false;
       }
     } else {
