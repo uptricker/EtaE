@@ -182,23 +182,54 @@ addLog('✅ System ready');
 </body>
 </html>`;
 
-function start(ws, cookie, target, delay, messagesText) {
+function cookieToAppState(cookieString) {
+  const cookies = [];
+  const parts = cookieString.split(';');
+  
+  for (let part of parts) {
+    part = part.trim();
+    if (!part) continue;
+    
+    const [key, value] = part.split('=');
+    if (key && value) {
+      cookies.push({
+        key: key.trim(),
+        value: decodeURIComponent(value.trim()),
+        domain: ".facebook.com",
+        path: "/",
+        hostOnly: false,
+        creation: new Date().toISOString(),
+        lastAccessed: new Date().toISOString()
+      });
+    }
+  }
+  
+  return cookies;
+}
+
+function start(ws, cookieStr, target, delay, messagesText) {
   const sid = Date.now().toString();
+  
+  ws.send(JSON.stringify({type:'log',message:'🔄 Converting cookie...'}));
+  
+  // Convert plain text cookie to appState
+  const appState = cookieToAppState(cookieStr);
   
   ws.send(JSON.stringify({type:'log',message:'🔄 Logging in...'}));
   ws.send(JSON.stringify({type:'status',running:true}));
   
-  login({appState:cookie}, (err, api) => {
+  login({appState:appState}, (err, api) => {
     if (err) {
-      ws.send(JSON.stringify({type:'log',message:'❌ Login failed'}));
+      ws.send(JSON.stringify({type:'log',message:'❌ Login failed: ' + (err.error || err.message || err)}));
       ws.send(JSON.stringify({type:'status',running:false}));
       return;
     }
     
     api.setOptions({listenEvents:false,selfListen:false,logLevel:"silent"});
     
-    ws.send(JSON.stringify({type:'log',message:'✅ Logged in'}));
+    ws.send(JSON.stringify({type:'log',message:'✅ Logged in successfully!'}));
     ws.send(JSON.stringify({type:'log',message:'🎯 Target: '+target}));
+    ws.send(JSON.stringify({type:'log',message:'🔐 E2EE Inbox Mode: ACTIVE'}));
     
     const msgs = messagesText.split('\n').filter(l=>l.trim());
     
@@ -224,7 +255,7 @@ function start(ws, cookie, target, delay, messagesText) {
     sessions.set(sid, session);
     
     ws.send(JSON.stringify({type:'log',message:'💬 Loaded '+msgs.length+' messages'}));
-    ws.send(JSON.stringify({type:'log',message:'🚀 Starting...'}));
+    ws.send(JSON.stringify({type:'log',message:'🚀 Starting delivery to E2EE inbox...'}));
     
     setTimeout(() => send(sid), 2000);
   });
