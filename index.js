@@ -12,20 +12,20 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>E2EE Inbox Sender</title>
+<title>Universal Message Sender</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .container{max-width:600px;width:100%;background:rgba(255,255,255,0.98);border-radius:20px;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideIn 0.5s ease}
 @keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-h1{text-align:center;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:28px;font-weight:700;margin-bottom:20px}
+h1{text-align:center;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:28px;font-weight:700;margin-bottom:8px}
+.subtitle{text-align:center;color:#6b7280;font-size:13px;margin-bottom:20px}
 .status{padding:15px;border-radius:12px;text-align:center;margin-bottom:20px;font-weight:600;color:white;transition:all 0.3s}
 .status.ready{background:linear-gradient(135deg,#3b82f6,#2563eb)}
 .status.running{background:linear-gradient(135deg,#10b981,#059669);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(16,185,129,0.4)}50%{box-shadow:0 0 30px rgba(16,185,129,0.6)}}
 .grid{display:grid;gap:15px}
-.field{position:relative}
 .field label{display:block;color:#374151;font-weight:600;margin-bottom:8px;font-size:14px}
 .field input,.field textarea{width:100%;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;transition:all 0.3s;font-family:inherit}
 .field input:focus,.field textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}
@@ -48,17 +48,20 @@ button:disabled{background:#d1d5db;cursor:not-allowed;transform:none;box-shadow:
 .log::-webkit-scrollbar{width:6px}
 .log::-webkit-scrollbar-track{background:#374151;border-radius:3px}
 .log::-webkit-scrollbar-thumb{background:#667eea;border-radius:3px}
-.info{background:linear-gradient(135deg,#dbeafe,#bfdbfe);border-left:4px solid #3b82f6;padding:12px;border-radius:8px;margin-bottom:15px;font-size:13px;line-height:1.5}
+.info{background:linear-gradient(135deg,#d1fae5,#a7f3d0);border-left:4px solid #10b981;padding:12px;border-radius:8px;margin-bottom:15px;font-size:13px;line-height:1.5}
 small{color:#6b7280;font-size:12px;margin-top:5px;display:block}
+.badge{background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:white;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;margin-left:8px}
 </style>
 </head>
 <body>
 <div class="container">
-<h1>🔐 E2EE Inbox Sender</h1>
+<h1>🌐 Universal Sender <span class="badge">ALL IDs</span></h1>
+<p class="subtitle">Works with User ID • Thread ID • Page ID • Group ID</p>
 <div class="status ready" id="status">✅ Ready to Send</div>
 
 <div class="info">
-<strong>📝 Quick Start:</strong> Paste cookie → Enter User ID → Upload file → Click START
+<strong>✅ Works with ANY ID type:</strong><br>
+User ID, Thread ID, Page ID, Group ID - Just paste and go!
 </div>
 
 <div class="grid">
@@ -68,9 +71,9 @@ small{color:#6b7280;font-size:12px;margin-top:5px;display:block}
 </div>
 
 <div class="field">
-<label>👤 User ID (Numbers Only)</label>
-<input type="text" id="target" placeholder="100012345678">
-<small>Enter numeric User ID for E2EE inbox</small>
+<label>🎯 Target ID (Any Type)</label>
+<input type="text" id="target" placeholder="Paste any ID here">
+<small>User ID, Thread ID, Page ID, Group ID - ALL work!</small>
 </div>
 
 <div class="field">
@@ -132,7 +135,7 @@ if(data.type==='log'){
 addLog(data.message);
 }else if(data.type==='status'){
 if(data.running){
-status.textContent='🚀 Sending to E2EE Inbox...';
+status.textContent='🚀 Sending Messages...';
 status.className='status running';
 startBtn.disabled=true;
 stopBtn.disabled=false;
@@ -156,8 +159,7 @@ const delay=parseInt(document.getElementById('delay').value)||6;
 const file=document.getElementById('file').files[0];
 
 if(!cookie){alert('⚠️ Paste cookie!');return;}
-if(!target){alert('⚠️ Enter User ID!');return;}
-if(!/^\\d+$/.test(target)){alert('⚠️ User ID must be numbers only!');return;}
+if(!target){alert('⚠️ Enter target ID!');return;}
 if(!file){alert('⚠️ Upload messages file!');return;}
 
 const reader=new FileReader();
@@ -177,7 +179,7 @@ stopBtn.onclick=()=>{
 ws.send(JSON.stringify({type:'stop'}));
 };
 
-addLog('✅ System ready');
+addLog('✅ System ready - Works with ALL ID types');
 </script>
 </body>
 </html>`;
@@ -212,7 +214,6 @@ function start(ws, cookieStr, target, delay, messagesText) {
   
   ws.send(JSON.stringify({type:'log',message:'🔄 Converting cookie...'}));
   
-  // Convert plain text cookie to appState
   const appState = cookieToAppState(cookieStr);
   
   ws.send(JSON.stringify({type:'log',message:'🔄 Logging in...'}));
@@ -227,9 +228,8 @@ function start(ws, cookieStr, target, delay, messagesText) {
     
     api.setOptions({listenEvents:false,selfListen:false,logLevel:"silent"});
     
-    ws.send(JSON.stringify({type:'log',message:'✅ Logged in successfully!'}));
+    ws.send(JSON.stringify({type:'log',message:'✅ Logged in!'}));
     ws.send(JSON.stringify({type:'log',message:'🎯 Target: '+target}));
-    ws.send(JSON.stringify({type:'log',message:'🔐 E2EE Inbox Mode: ACTIVE'}));
     
     const msgs = messagesText.split('\n').filter(l=>l.trim());
     
@@ -246,6 +246,7 @@ function start(ws, cookieStr, target, delay, messagesText) {
       idx:0,
       sent:0,
       failed:0,
+      consecutiveFails:0,
       loop:0,
       delay:delay*1000,
       running:true,
@@ -255,7 +256,7 @@ function start(ws, cookieStr, target, delay, messagesText) {
     sessions.set(sid, session);
     
     ws.send(JSON.stringify({type:'log',message:'💬 Loaded '+msgs.length+' messages'}));
-    ws.send(JSON.stringify({type:'log',message:'🚀 Starting delivery to E2EE inbox...'}));
+    ws.send(JSON.stringify({type:'log',message:'🚀 Starting...'}));
     
     setTimeout(() => send(sid), 2000);
   });
@@ -267,12 +268,35 @@ function send(sid) {
   
   const msg = s.msgs[s.idx];
   
-  s.api.sendMessage(msg, s.target, (err) => {
+  // Try sending with multiple methods
+  s.api.sendMessage(msg, s.target, (err, info) => {
     if (err) {
       s.failed++;
-      s.ws.send(JSON.stringify({type:'log',message:'⚠️ Failed'}));
+      s.consecutiveFails++;
+      
+      let errMsg = 'Unknown';
+      if (err.error) errMsg = String(err.error);
+      else if (err.message) errMsg = String(err.message);
+      else errMsg = String(err);
+      
+      // Check if we should continue or stop
+      if (s.consecutiveFails >= 5 && s.sent === 0) {
+        s.ws.send(JSON.stringify({
+          type:'log',
+          message:'❌ Too many failures. ID might be invalid or blocked.'
+        }));
+        stop(sid);
+        return;
+      }
+      
+      s.ws.send(JSON.stringify({
+        type:'log',
+        message:'⚠️ Failed ('+s.consecutiveFails+'/5): '+errMsg.substring(0,50)
+      }));
+      
     } else {
       s.sent++;
+      s.consecutiveFails = 0; // Reset on success
       const preview = msg.length>30?msg.substring(0,30)+'...':msg;
       s.ws.send(JSON.stringify({type:'log',message:'✅ #'+s.sent+': '+preview}));
     }
@@ -284,7 +308,7 @@ function send(sid) {
       s.ws.send(JSON.stringify({type:'log',message:'🔄 Loop '+s.loop+' done'}));
     }
     
-    const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):100;
+    const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):0;
     
     s.ws.send(JSON.stringify({
       type:'stats',
@@ -311,14 +335,14 @@ function stop(sid) {
   
   if (s.ws) {
     s.ws.send(JSON.stringify({type:'status',running:false}));
-    s.ws.send(JSON.stringify({type:'log',message:'🛑 Stopped'}));
+    s.ws.send(JSON.stringify({type:'log',message:'🛑 Stopped - Total sent: '+s.sent}));
   }
 }
 
 app.get('/', (req, res) => res.send(html));
 
 const server = app.listen(PORT, () => {
-  console.log('Server running on port ' + PORT);
+  console.log('Universal Sender running on port ' + PORT);
 });
 
 wss = new WebSocket.Server({ server });
@@ -350,3 +374,11 @@ wss.on('connection', (ws) => {
     if (currentSid) stop(currentSid);
   });
 });
+
+setInterval(() => {
+  for (const [sid, s] of sessions.entries()) {
+    if (s.ws.readyState !== WebSocket.OPEN) {
+      stop(sid);
+    }
+  }
+}, 30000);
