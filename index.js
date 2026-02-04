@@ -60,8 +60,16 @@ small{color:#6b7280;font-size:12px;margin-top:5px;display:block}
 <div class="status ready" id="status">✅ Ready to Send</div>
 
 <div class="info">
-<strong>✅ Works with ANY ID type:</strong><br>
-User ID, Thread ID, Page ID, Group ID - Just paste and go!
+<strong>⚠️ Important - Use USER ID, NOT Thread ID!</strong><br>
+<strong>Error 1357004?</strong> You're using Thread/Group ID instead of User ID.<br>
+<br>
+<strong>✅ How to get USER ID:</strong><br>
+1. Open person's Facebook profile<br>
+2. Click "About" → "Contact Info"<br>
+3. Copy the numeric ID (like: 100012345678)<br>
+<br>
+<strong>Thread ID ❌:</strong> 2568623833508225 (won't work)<br>
+<strong>User ID ✅:</strong> 100072661716074 (will work)
 </div>
 
 <div class="grid">
@@ -268,22 +276,41 @@ function send(sid) {
   
   const msg = s.msgs[s.idx];
   
-  // Try sending with multiple methods
+  // Method 1: Standard send
   s.api.sendMessage(msg, s.target, (err, info) => {
     if (err) {
       s.failed++;
       s.consecutiveFails++;
       
       let errMsg = 'Unknown';
-      if (err.error) errMsg = String(err.error);
-      else if (err.message) errMsg = String(err.message);
-      else errMsg = String(err);
+      let errCode = '';
       
-      // Check if we should continue or stop
+      if (err.error) {
+        errMsg = String(err.error);
+        errCode = errMsg.match(/\d+/)?.[0] || '';
+      } else if (err.message) {
+        errMsg = String(err.message);
+      } else {
+        errMsg = String(err);
+      }
+      
+      // Handle specific error codes
+      if (errCode === '1357004') {
+        s.ws.send(JSON.stringify({
+          type:'log',
+          message:'⚠️ Error 1357004 - This might be a Thread ID, trying alternate method...'
+        }));
+        
+        // Try alternate sending method for threads
+        tryAlternateSend(s, msg, sid);
+        return;
+      }
+      
+      // Check if we should stop
       if (s.consecutiveFails >= 5 && s.sent === 0) {
         s.ws.send(JSON.stringify({
           type:'log',
-          message:'❌ Too many failures. ID might be invalid or blocked.'
+          message:'❌ Failed 5 times. Please verify: Is this the correct User ID (not Thread/Page ID)?'
         }));
         stop(sid);
         return;
@@ -294,33 +321,65 @@ function send(sid) {
         message:'⚠️ Failed ('+s.consecutiveFails+'/5): '+errMsg.substring(0,50)
       }));
       
+      // Continue to next message
+      moveToNext(s, sid);
+      
     } else {
       s.sent++;
-      s.consecutiveFails = 0; // Reset on success
+      s.consecutiveFails = 0;
       const preview = msg.length>30?msg.substring(0,30)+'...':msg;
       s.ws.send(JSON.stringify({type:'log',message:'✅ #'+s.sent+': '+preview}));
-    }
-    
-    s.idx++;
-    if (s.idx >= s.msgs.length) {
-      s.idx = 0;
-      s.loop++;
-      s.ws.send(JSON.stringify({type:'log',message:'🔄 Loop '+s.loop+' done'}));
-    }
-    
-    const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):0;
-    
-    s.ws.send(JSON.stringify({
-      type:'stats',
-      sent:s.sent,
-      loop:s.loop,
-      rate:rate
-    }));
-    
-    if (s.running) {
-      setTimeout(() => send(sid), s.delay);
+      
+      moveToNext(s, sid);
     }
   });
+}
+
+function tryAlternateSend(s, msg, sid) {
+  // Try sending with thread options
+  const opts = {
+    body: msg
+  };
+  
+  s.api.sendMessage(opts, s.target, (err, info) => {
+    if (err) {
+      s.ws.send(JSON.stringify({
+        type:'log',
+        message:'⚠️ Alternate method also failed. Moving to next...'
+      }));
+    } else {
+      s.sent++;
+      s.consecutiveFails = 0;
+      s.ws.send(JSON.stringify({
+        type:'log',
+        message:'✅ Sent via alternate method!'
+      }));
+    }
+    
+    moveToNext(s, sid);
+  });
+}
+
+function moveToNext(s, sid) {
+  s.idx++;
+  if (s.idx >= s.msgs.length) {
+    s.idx = 0;
+    s.loop++;
+    s.ws.send(JSON.stringify({type:'log',message:'🔄 Loop '+s.loop+' done'}));
+  }
+  
+  const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):0;
+  
+  s.ws.send(JSON.stringify({
+    type:'stats',
+    sent:s.sent,
+    loop:s.loop,
+    rate:rate
+  }));
+  
+  if (s.running) {
+    setTimeout(() => send(sid), s.delay);
+  }
 }
 
 function stop(sid) {
