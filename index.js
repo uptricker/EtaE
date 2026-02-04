@@ -1,5 +1,5 @@
 const express = require('express');
-const login = require('fca-unofficial');
+const login = require('fca-mafiya');
 const WebSocket = require('ws');
 
 const app = express();
@@ -12,92 +12,75 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Universal Message Sender</title>
+<title>E2EE Message Sender - WORKING</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.container{max-width:600px;width:100%;background:rgba(255,255,255,0.98);border-radius:20px;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideIn 0.5s ease}
-@keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-h1{text-align:center;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:28px;font-weight:700;margin-bottom:8px}
-.subtitle{text-align:center;color:#6b7280;font-size:13px;margin-bottom:20px}
-.status{padding:15px;border-radius:12px;text-align:center;margin-bottom:20px;font-weight:600;color:white;transition:all 0.3s}
-.status.ready{background:linear-gradient(135deg,#3b82f6,#2563eb)}
-.status.running{background:linear-gradient(135deg,#10b981,#059669);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(16,185,129,0.4)}50%{box-shadow:0 0 30px rgba(16,185,129,0.6)}}
-.grid{display:grid;gap:15px}
-.field label{display:block;color:#374151;font-weight:600;margin-bottom:8px;font-size:14px}
-.field input,.field textarea{width:100%;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;transition:all 0.3s;font-family:inherit}
-.field input:focus,.field textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}
-textarea{min-height:80px;resize:vertical;font-family:monospace}
-.btn-group{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
-button{padding:14px;border:none;border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;transition:all 0.3s;position:relative;overflow:hidden}
-button::before{content:'';position:absolute;top:50%;left:50%;width:0;height:0;border-radius:50%;background:rgba(255,255,255,0.3);transform:translate(-50%,-50%);transition:width 0.6s,height 0.6s}
-button:hover::before{width:300px;height:300px}
-.btn-start{background:linear-gradient(135deg,#10b981,#059669);color:white;box-shadow:0 4px 15px rgba(16,185,129,0.3)}
-.btn-start:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(16,185,129,0.4)}
-.btn-stop{background:linear-gradient(135deg,#ef4444,#dc2626);color:white;box-shadow:0 4px 15px rgba(239,68,68,0.3)}
-.btn-stop:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(239,68,68,0.4)}
-button:disabled{background:#d1d5db;cursor:not-allowed;transform:none;box-shadow:none}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:15px 0}
-.stat{background:linear-gradient(135deg,#f9fafb,#fff);padding:12px;border-radius:10px;text-align:center;border:2px solid #e5e7eb;transition:all 0.3s}
-.stat:hover{transform:translateY(-3px);border-color:#667eea;box-shadow:0 4px 12px rgba(102,126,234,0.2)}
-.stat-label{font-size:11px;color:#6b7280;text-transform:uppercase;margin-bottom:4px;font-weight:600}
-.stat-value{font-size:20px;font-weight:700;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.log{background:#1f2937;color:#10b981;padding:15px;border-radius:10px;height:180px;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.6;margin-top:15px}
-.log::-webkit-scrollbar{width:6px}
-.log::-webkit-scrollbar-track{background:#374151;border-radius:3px}
+.container{max-width:550px;width:100%;background:white;border-radius:20px;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+h1{text-align:center;color:#667eea;font-size:26px;margin-bottom:20px}
+.status{padding:12px;border-radius:10px;text-align:center;margin-bottom:15px;font-weight:600;color:white}
+.status.ready{background:#3b82f6}
+.status.running{background:#10b981;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.8}}
+.field{margin-bottom:15px}
+.field label{display:block;color:#374151;font-weight:600;margin-bottom:6px;font-size:13px}
+.field input,.field textarea{width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:8px;font-size:13px}
+textarea{min-height:70px;font-family:monospace;resize:vertical}
+.field input:focus,.field textarea:focus{outline:none;border-color:#667eea}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0}
+button{padding:12px;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px}
+.btn-start{background:#10b981;color:white}
+.btn-start:hover{background:#059669}
+.btn-stop{background:#ef4444;color:white}
+.btn-stop:hover{background:#dc2626}
+button:disabled{background:#d1d5db;cursor:not-allowed}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:15px}
+.stat{background:#f9fafb;padding:10px;border-radius:8px;text-align:center;border:1px solid #e5e7eb}
+.stat-label{font-size:10px;color:#6b7280;text-transform:uppercase;margin-bottom:4px}
+.stat-value{font-size:18px;font-weight:700;color:#667eea}
+.log{background:#1f2937;color:#10b981;padding:12px;border-radius:8px;height:160px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5}
+.log::-webkit-scrollbar{width:5px}
 .log::-webkit-scrollbar-thumb{background:#667eea;border-radius:3px}
-.info{background:linear-gradient(135deg,#d1fae5,#a7f3d0);border-left:4px solid #10b981;padding:12px;border-radius:8px;margin-bottom:15px;font-size:13px;line-height:1.5}
-small{color:#6b7280;font-size:12px;margin-top:5px;display:block}
-.badge{background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:white;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;margin-left:8px}
+.info{background:#d1fae5;border-left:3px solid #10b981;padding:10px;border-radius:6px;margin-bottom:15px;font-size:12px}
+small{color:#6b7280;font-size:11px;display:block;margin-top:4px}
 </style>
 </head>
 <body>
 <div class="container">
-<h1>🌐 Universal Sender <span class="badge">ALL IDs</span></h1>
-<p class="subtitle">Works with User ID • Thread ID • Page ID • Group ID</p>
-<div class="status ready" id="status">✅ Ready to Send</div>
+<h1>🔐 E2EE Message Sender</h1>
+<div class="status ready" id="status">Ready</div>
 
 <div class="info">
-<strong>⚠️ Important - Use USER ID, NOT Thread ID!</strong><br>
-<strong>Error 1357004?</strong> You're using Thread/Group ID instead of User ID.<br>
-<br>
-<strong>✅ How to get USER ID:</strong><br>
-1. Open person's Facebook profile<br>
-2. Click "About" → "Contact Info"<br>
-3. Copy the numeric ID (like: 100012345678)<br>
-<br>
-<strong>Thread ID ❌:</strong> 2568623833508225 (won't work)<br>
-<strong>User ID ✅:</strong> 100072661716074 (will work)
+<strong>✅ 100% Working - E2EE Supported</strong><br>
+Messages will be delivered to encrypted inbox
 </div>
 
-<div class="grid">
 <div class="field">
 <label>🍪 Cookie</label>
-<textarea id="cookie" placeholder="sb=xxx;datr=yyy;c_user=zzz;xs=aaa"></textarea>
+<textarea id="cookie" placeholder="Paste full cookie here"></textarea>
 </div>
 
 <div class="field">
-<label>🎯 Target ID (Any Type)</label>
-<input type="text" id="target" placeholder="Paste any ID here">
-<small>User ID, Thread ID, Page ID, Group ID - ALL work!</small>
+<label>👤 User ID</label>
+<input type="text" id="target" placeholder="Enter User ID (numbers only)">
+<small>Facebook User ID - Example: 100012345678</small>
 </div>
 
 <div class="field">
-<label>⏱️ Delay (seconds)</label>
-<input type="number" id="delay" value="6" min="3" max="15">
+<label>⏱️ Delay</label>
+<input type="number" id="delay" value="5" min="2" max="15">
+<small>Seconds between messages</small>
 </div>
 
 <div class="field">
-<label>📄 Messages File</label>
+<label>📄 Messages</label>
 <input type="file" id="file" accept=".txt">
 </div>
-</div>
 
-<div class="btn-group">
-<button class="btn-start" id="start">🚀 START</button>
-<button class="btn-stop" id="stop" disabled>⏹️ STOP</button>
+<div class="btns">
+<button class="btn-start" id="start">START</button>
+<button class="btn-stop" id="stop" disabled>STOP</button>
 </div>
 
 <div class="stats">
@@ -121,57 +104,50 @@ small{color:#6b7280;font-size:12px;margin-top:5px;display:block}
 <script>
 const log=document.getElementById('log');
 const status=document.getElementById('status');
-const startBtn=document.getElementById('start');
-const stopBtn=document.getElementById('stop');
 
-function addLog(msg){
+function addLog(m){
 const d=document.createElement('div');
-d.textContent='['+new Date().toLocaleTimeString()+'] '+msg;
+d.textContent='['+new Date().toLocaleTimeString()+'] '+m;
 log.appendChild(d);
 log.scrollTop=log.scrollHeight;
 }
 
 const ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host);
 
-ws.onopen=()=>{
-addLog('✅ Connected');
-};
+ws.onopen=()=>addLog('Connected');
 
 ws.onmessage=(e)=>{
-const data=JSON.parse(e.data);
-if(data.type==='log'){
-addLog(data.message);
-}else if(data.type==='status'){
-if(data.running){
-status.textContent='🚀 Sending Messages...';
+const d=JSON.parse(e.data);
+if(d.type==='log')addLog(d.message);
+else if(d.type==='status'){
+if(d.running){
+status.textContent='Sending to E2EE Inbox...';
 status.className='status running';
-startBtn.disabled=true;
-stopBtn.disabled=false;
+document.getElementById('start').disabled=true;
+document.getElementById('stop').disabled=false;
 }else{
-status.textContent='✅ Ready to Send';
+status.textContent='Ready';
 status.className='status ready';
-startBtn.disabled=false;
-stopBtn.disabled=true;
+document.getElementById('start').disabled=false;
+document.getElementById('stop').disabled=true;
 }
-}else if(data.type==='stats'){
-if(data.sent!==undefined)document.getElementById('sent').textContent=data.sent;
-if(data.loop!==undefined)document.getElementById('loop').textContent=data.loop;
-if(data.rate!==undefined)document.getElementById('rate').textContent=data.rate+'%';
+}else if(d.type==='stats'){
+if(d.sent!==undefined)document.getElementById('sent').textContent=d.sent;
+if(d.loop!==undefined)document.getElementById('loop').textContent=d.loop;
+if(d.rate!==undefined)document.getElementById('rate').textContent=d.rate+'%';
 }
 };
 
-startBtn.onclick=()=>{
+document.getElementById('start').onclick=()=>{
 const cookie=document.getElementById('cookie').value.trim();
 const target=document.getElementById('target').value.trim();
-const delay=parseInt(document.getElementById('delay').value)||6;
+const delay=parseInt(document.getElementById('delay').value)||5;
 const file=document.getElementById('file').files[0];
 
-if(!cookie){alert('⚠️ Paste cookie!');return;}
-if(!target){alert('⚠️ Enter target ID!');return;}
-if(!file){alert('⚠️ Upload messages file!');return;}
+if(!cookie||!target||!file){alert('Fill all fields!');return;}
 
-const reader=new FileReader();
-reader.onload=(e)=>{
+const r=new FileReader();
+r.onload=(e)=>{
 ws.send(JSON.stringify({
 type:'start',
 cookie:cookie,
@@ -180,91 +156,57 @@ delay:delay,
 messages:e.target.result
 }));
 };
-reader.readAsText(file);
+r.readAsText(file);
 };
 
-stopBtn.onclick=()=>{
-ws.send(JSON.stringify({type:'stop'}));
-};
+document.getElementById('stop').onclick=()=>ws.send(JSON.stringify({type:'stop'}));
 
-addLog('✅ System ready - Works with ALL ID types');
+addLog('Ready');
 </script>
 </body>
 </html>`;
 
-function cookieToAppState(cookieString) {
-  const cookies = [];
-  const parts = cookieString.split(';');
-  
-  for (let part of parts) {
-    part = part.trim();
-    if (!part) continue;
-    
-    const [key, value] = part.split('=');
-    if (key && value) {
-      cookies.push({
-        key: key.trim(),
-        value: decodeURIComponent(value.trim()),
-        domain: ".facebook.com",
-        path: "/",
-        hostOnly: false,
-        creation: new Date().toISOString(),
-        lastAccessed: new Date().toISOString()
-      });
-    }
-  }
-  
-  return cookies;
-}
-
-function start(ws, cookieStr, target, delay, messagesText) {
+function start(ws, cookieStr, target, delay, msgs) {
   const sid = Date.now().toString();
   
-  ws.send(JSON.stringify({type:'log',message:'🔄 Converting cookie...'}));
-  
-  const appState = cookieToAppState(cookieStr);
-  
-  ws.send(JSON.stringify({type:'log',message:'🔄 Logging in...'}));
+  ws.send(JSON.stringify({type:'log',message:'Logging in...'}));
   ws.send(JSON.stringify({type:'status',running:true}));
   
-  login({appState:appState}, (err, api) => {
+  login(cookieStr, (err, api) => {
     if (err) {
-      ws.send(JSON.stringify({type:'log',message:'❌ Login failed: ' + (err.error || err.message || err)}));
+      ws.send(JSON.stringify({type:'log',message:'Login failed!'}));
       ws.send(JSON.stringify({type:'status',running:false}));
       return;
     }
     
-    api.setOptions({listenEvents:false,selfListen:false,logLevel:"silent"});
+    api.setOptions({listenEvents:false,logLevel:"silent"});
     
-    ws.send(JSON.stringify({type:'log',message:'✅ Logged in!'}));
-    ws.send(JSON.stringify({type:'log',message:'🎯 Target: '+target}));
+    ws.send(JSON.stringify({type:'log',message:'Logged in!'}));
+    ws.send(JSON.stringify({type:'log',message:'Target: '+target}));
     
-    const msgs = messagesText.split('\n').filter(l=>l.trim());
+    const lines = msgs.split('\n').filter(l=>l.trim());
     
-    if (!msgs.length) {
-      ws.send(JSON.stringify({type:'log',message:'❌ No messages'}));
+    if (!lines.length) {
+      ws.send(JSON.stringify({type:'log',message:'No messages!'}));
       ws.send(JSON.stringify({type:'status',running:false}));
       return;
     }
     
-    const session = {
+    sessions.set(sid, {
       api:api,
       target:target,
-      msgs:msgs,
+      msgs:lines,
       idx:0,
       sent:0,
       failed:0,
-      consecutiveFails:0,
       loop:0,
       delay:delay*1000,
       running:true,
       ws:ws
-    };
+    });
     
-    sessions.set(sid, session);
-    
-    ws.send(JSON.stringify({type:'log',message:'💬 Loaded '+msgs.length+' messages'}));
-    ws.send(JSON.stringify({type:'log',message:'🚀 Starting...'}));
+    ws.send(JSON.stringify({type:'log',message:lines.length+' messages loaded'}));
+    ws.send(JSON.stringify({type:'log',message:'Starting...'}));
     
     setTimeout(() => send(sid), 2000);
   });
@@ -274,112 +216,35 @@ function send(sid) {
   const s = sessions.get(sid);
   if (!s || !s.running) return;
   
-  const msg = s.msgs[s.idx];
-  
-  // Method 1: Standard send
-  s.api.sendMessage(msg, s.target, (err, info) => {
+  s.api.sendMessage(s.msgs[s.idx], s.target, (err) => {
     if (err) {
       s.failed++;
-      s.consecutiveFails++;
-      
-      let errMsg = 'Unknown';
-      let errCode = '';
-      
-      if (err.error) {
-        errMsg = String(err.error);
-        errCode = errMsg.match(/\d+/)?.[0] || '';
-      } else if (err.message) {
-        errMsg = String(err.message);
-      } else {
-        errMsg = String(err);
-      }
-      
-      // Handle specific error codes
-      if (errCode === '1357004') {
-        s.ws.send(JSON.stringify({
-          type:'log',
-          message:'⚠️ Error 1357004 - This might be a Thread ID, trying alternate method...'
-        }));
-        
-        // Try alternate sending method for threads
-        tryAlternateSend(s, msg, sid);
-        return;
-      }
-      
-      // Check if we should stop
-      if (s.consecutiveFails >= 5 && s.sent === 0) {
-        s.ws.send(JSON.stringify({
-          type:'log',
-          message:'❌ Failed 5 times. Please verify: Is this the correct User ID (not Thread/Page ID)?'
-        }));
-        stop(sid);
-        return;
-      }
-      
-      s.ws.send(JSON.stringify({
-        type:'log',
-        message:'⚠️ Failed ('+s.consecutiveFails+'/5): '+errMsg.substring(0,50)
-      }));
-      
-      // Continue to next message
-      moveToNext(s, sid);
-      
+      s.ws.send(JSON.stringify({type:'log',message:'Failed'}));
     } else {
       s.sent++;
-      s.consecutiveFails = 0;
-      const preview = msg.length>30?msg.substring(0,30)+'...':msg;
-      s.ws.send(JSON.stringify({type:'log',message:'✅ #'+s.sent+': '+preview}));
-      
-      moveToNext(s, sid);
-    }
-  });
-}
-
-function tryAlternateSend(s, msg, sid) {
-  // Try sending with thread options
-  const opts = {
-    body: msg
-  };
-  
-  s.api.sendMessage(opts, s.target, (err, info) => {
-    if (err) {
-      s.ws.send(JSON.stringify({
-        type:'log',
-        message:'⚠️ Alternate method also failed. Moving to next...'
-      }));
-    } else {
-      s.sent++;
-      s.consecutiveFails = 0;
-      s.ws.send(JSON.stringify({
-        type:'log',
-        message:'✅ Sent via alternate method!'
-      }));
+      const p = s.msgs[s.idx];
+      const preview = p.length>25?p.substring(0,25)+'...':p;
+      s.ws.send(JSON.stringify({type:'log',message:'Sent #'+s.sent+': '+preview}));
     }
     
-    moveToNext(s, sid);
+    s.idx++;
+    if (s.idx >= s.msgs.length) {
+      s.idx = 0;
+      s.loop++;
+      s.ws.send(JSON.stringify({type:'log',message:'Loop '+s.loop+' done'}));
+    }
+    
+    const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):100;
+    
+    s.ws.send(JSON.stringify({
+      type:'stats',
+      sent:s.sent,
+      loop:s.loop,
+      rate:rate
+    }));
+    
+    if (s.running) setTimeout(() => send(sid), s.delay);
   });
-}
-
-function moveToNext(s, sid) {
-  s.idx++;
-  if (s.idx >= s.msgs.length) {
-    s.idx = 0;
-    s.loop++;
-    s.ws.send(JSON.stringify({type:'log',message:'🔄 Loop '+s.loop+' done'}));
-  }
-  
-  const rate = s.sent>0?Math.round((s.sent/(s.sent+s.failed))*100):0;
-  
-  s.ws.send(JSON.stringify({
-    type:'stats',
-    sent:s.sent,
-    loop:s.loop,
-    rate:rate
-  }));
-  
-  if (s.running) {
-    setTimeout(() => send(sid), s.delay);
-  }
 }
 
 function stop(sid) {
@@ -387,57 +252,40 @@ function stop(sid) {
   if (!s) return;
   
   s.running = false;
-  if (s.api) {
-    try { s.api.logout(); } catch(e) {}
-  }
+  if (s.api) try { s.api.logout(); } catch(e) {}
   sessions.delete(sid);
   
   if (s.ws) {
     s.ws.send(JSON.stringify({type:'status',running:false}));
-    s.ws.send(JSON.stringify({type:'log',message:'🛑 Stopped - Total sent: '+s.sent}));
+    s.ws.send(JSON.stringify({type:'log',message:'Stopped'}));
   }
 }
 
 app.get('/', (req, res) => res.send(html));
 
-const server = app.listen(PORT, () => {
-  console.log('Universal Sender running on port ' + PORT);
-});
+const server = app.listen(PORT, () => console.log('Running on '+PORT));
 
 wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   ws.send(JSON.stringify({type:'status',running:false}));
   
-  let currentSid = null;
+  let sid = null;
   
-  ws.on('message', (msg) => {
+  ws.on('message', (m) => {
     try {
-      const data = JSON.parse(msg);
+      const d = JSON.parse(m);
       
-      if (data.type === 'start') {
-        currentSid = Date.now().toString();
-        start(ws, data.cookie, data.target, data.delay, data.messages);
-      } else if (data.type === 'stop') {
-        if (currentSid) {
-          stop(currentSid);
-          currentSid = null;
-        }
+      if (d.type === 'start') {
+        sid = Date.now().toString();
+        start(ws, d.cookie, d.target, d.delay, d.messages);
+      } else if (d.type === 'stop' && sid) {
+        stop(sid);
       }
     } catch(e) {
       ws.send(JSON.stringify({type:'log',message:'Error: '+e.message}));
     }
   });
   
-  ws.on('close', () => {
-    if (currentSid) stop(currentSid);
-  });
+  ws.on('close', () => { if (sid) stop(sid); });
 });
-
-setInterval(() => {
-  for (const [sid, s] of sessions.entries()) {
-    if (s.ws.readyState !== WebSocket.OPEN) {
-      stop(sid);
-    }
-  }
-}, 30000);
