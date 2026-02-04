@@ -1,5 +1,5 @@
 const express = require('express');
-const login = require('fca-mafiya');
+const fca = require('fca-mafiya');
 const WebSocket = require('ws');
 
 const app = express();
@@ -48,33 +48,33 @@ small{color:#6b7280;font-size:11px;display:block;margin-top:4px}
 </head>
 <body>
 <div class="container">
-<h1>🔐 E2EE Message Sender</h1>
+<h1>ðŸ” E2EE Message Sender</h1>
 <div class="status ready" id="status">Ready</div>
 
 <div class="info">
-<strong>✅ 100% Working - E2EE Supported</strong><br>
+<strong>âœ… 100% Working - E2EE Supported</strong><br>
 Messages will be delivered to encrypted inbox
 </div>
 
 <div class="field">
-<label>🍪 Cookie</label>
+<label>ðŸª Cookie</label>
 <textarea id="cookie" placeholder="Paste full cookie here"></textarea>
 </div>
 
 <div class="field">
-<label>👤 User ID</label>
+<label>ðŸ‘¤ User ID</label>
 <input type="text" id="target" placeholder="Enter User ID (numbers only)">
 <small>Facebook User ID - Example: 100012345678</small>
 </div>
 
 <div class="field">
-<label>⏱️ Delay</label>
+<label>â±ï¸ Delay</label>
 <input type="number" id="delay" value="5" min="2" max="15">
 <small>Seconds between messages</small>
 </div>
 
 <div class="field">
-<label>📄 Messages</label>
+<label>ðŸ“„ Messages</label>
 <input type="file" id="file" accept=".txt">
 </div>
 
@@ -172,7 +172,7 @@ function start(ws, cookieStr, target, delay, msgs) {
   ws.send(JSON.stringify({type:'log',message:'Logging in...'}));
   ws.send(JSON.stringify({type:'status',running:true}));
   
-  login(cookieStr, (err, api) => {
+  fca(cookieStr, (err, api) => {
     if (err) {
       ws.send(JSON.stringify({type:'log',message:'Login failed!'}));
       ws.send(JSON.stringify({type:'status',running:false}));
